@@ -1,7 +1,6 @@
 flask
 pdfplumber
 numpy
-sentence-transformers
-faiss-cpu
+scikit-learn
 groq
 python-dotenv

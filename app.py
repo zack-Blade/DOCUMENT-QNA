@@ -2,22 +2,19 @@ from flask import Flask, request, jsonify, render_template
 import pdfplumber
 import os
 import numpy as np
-from sentence_transformers import SentenceTransformer
-import faiss
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 from groq import Groq
+from dotenv import load_dotenv
 
+load_dotenv()
 app = Flask(__name__)
 UPLOAD_FOLDER = 'uploads'
-
-import os
-from dotenv import load_dotenv
-load_dotenv()
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
-model = SentenceTransformer('all-MiniLM-L6-v2')
-
 chunks = []
-index = None
+vectorizer = None
+chunk_vectors = None
 
 def extract_text(path):
     text = ""
@@ -30,41 +27,34 @@ def split_chunks(text, size=500):
     words = text.split()
     return [' '.join(words[i:i+size]) for i in range(0, len(words), size)]
 
-def build_index(chunk_list):
-    embeddings = model.encode(chunk_list)
-    embeddings = np.array(embeddings).astype('float32')
-    dim = embeddings.shape[1]
-    idx = faiss.IndexFlatL2(dim)
-    idx.add(embeddings)
-    return idx
-
 @app.route('/')
 def home():
     return render_template('index.html')
 
 @app.route('/upload', methods=['POST'])
 def upload():
-    global chunks, index
+    global chunks, vectorizer, chunk_vectors
     file = request.files['pdf']
     path = os.path.join(UPLOAD_FOLDER, file.filename)
     file.save(path)
 
     text = extract_text(path)
     chunks = split_chunks(text)
-    index = build_index(chunks)
+
+    vectorizer = TfidfVectorizer()
+    chunk_vectors = vectorizer.fit_transform(chunks)
 
     return jsonify({"message": f"PDF processed. {len(chunks)} chunks indexed."})
 
 @app.route('/ask', methods=['POST'])
 def ask():
-    global chunks, index
+    global chunks, vectorizer, chunk_vectors
     question = request.json.get('question')
 
-    query_vec = model.encode([question])
-    query_vec = np.array(query_vec).astype('float32')
-
-    _, indices = index.search(query_vec, k=3)
-    relevant = [chunks[i] for i in indices[0]]
+    query_vec = vectorizer.transform([question])
+    scores = cosine_similarity(query_vec, chunk_vectors).flatten()
+    top_indices = scores.argsort()[-3:][::-1]
+    relevant = [chunks[i] for i in top_indices]
     context = '\n\n'.join(relevant)
 
     prompt = f"""You are a helpful assistant. Answer the question based only on the context below.
