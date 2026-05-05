@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Document Q&A</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #0f1117;
+      color: #e0e0e0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 20px;
+    }
+
+    h1 {
+      font-size: 2rem;
+      color: #ffffff;
+      margin-bottom: 8px;
+    }
+
+    .subtitle {
+      color: #888;
+      margin-bottom: 40px;
+      font-size: 0.95rem;
+    }
+
+    .card {
+      background: #1a1d27;
+      border: 1px solid #2a2d3e;
+      border-radius: 12px;
+      padding: 24px;
+      width: 100%;
+      max-width: 720px;
+      margin-bottom: 20px;
+    }
+
+    .card h2 {
+      font-size: 1rem;
+      color: #aaa;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 16px;
+    }
+
+    .upload-row {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+
+    input[type="file"] {
+      background: #0f1117;
+      border: 1px solid #2a2d3e;
+      border-radius: 8px;
+      padding: 10px;
+      color: #e0e0e0;
+      flex: 1;
+      cursor: pointer;
+    }
+
+    .ask-row {
+      display: flex;
+      gap: 12px;
+    }
+
+    input[type="text"] {
+      flex: 1;
+      background: #0f1117;
+      border: 1px solid #2a2d3e;
+      border-radius: 8px;
+      padding: 12px 16px;
+      color: #e0e0e0;
+      font-size: 1rem;
+      outline: none;
+    }
+
+    input[type="text"]:focus {
+      border-color: #6c63ff;
+    }
+
+    button {
+      background: #6c63ff;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 12px 24px;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: background 0.2s;
+      white-space: nowrap;
+    }
+
+    button:hover { background: #574fd6; }
+    button:disabled { background: #444; cursor: not-allowed; }
+
+    .status {
+      margin-top: 12px;
+      font-size: 0.9rem;
+      color: #6c63ff;
+    }
+
+    .chat-box {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .chat-entry {
+      background: #0f1117;
+      border: 1px solid #2a2d3e;
+      border-radius: 10px;
+      padding: 16px;
+    }
+
+    .chat-question {
+      font-weight: 600;
+      color: #6c63ff;
+      margin-bottom: 8px;
+      font-size: 0.95rem;
+    }
+
+    .chat-answer {
+      color: #d0d0d0;
+      line-height: 1.6;
+      font-size: 0.95rem;
+      white-space: pre-wrap;
+    }
+
+    .spinner {
+      display: none;
+      width: 20px;
+      height: 20px;
+      border: 3px solid #444;
+      border-top-color: #6c63ff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      margin: 12px auto 0;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .empty-state {
+      text-align: center;
+      color: #555;
+      font-size: 0.9rem;
+      padding: 20px 0;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Document Q&A</h1>
+  <p class="subtitle">Upload a PDF and ask anything about it</p>
+
+  <div class="card">
+    <h2>Step 1 — Upload PDF</h2>
+    <div class="upload-row">
+      <input type="file" id="pdf" accept=".pdf">
+      <button onclick="upload()" id="upload-btn">Upload</button>
+    </div>
+    <p class="status" id="upload-status"></p>
+  </div>
+
+  <div class="card">
+    <h2>Step 2 — Ask a Question</h2>
+    <div class="ask-row">
+      <input type="text" id="question" placeholder="e.g. What is bubble sort?" onkeydown="if(event.key==='Enter') ask()">
+      <button onclick="ask()" id="ask-btn">Ask</button>
+    </div>
+    <div class="spinner" id="spinner"></div>
+  </div>
+
+  <div class="card" id="history-card">
+    <h2>Answers</h2>
+    <div class="chat-box" id="chat-box">
+      <p class="empty-state">No questions yet. Upload a PDF and start asking.</p>
+    </div>
+  </div>
+
+  <script>
+    let firstAnswer = true;
+
+    async function upload() {
+      const file = document.getElementById('pdf').files[0];
+      if (!file) return;
+
+      const btn = document.getElementById('upload-btn');
+      btn.disabled = true;
+      btn.textContent = 'Uploading...';
+
+      const form = new FormData();
+      form.append('pdf', file);
+
+      const res = await fetch('/upload', { method: 'POST', body: form });
+      const data = await res.json();
+
+      document.getElementById('upload-status').textContent = data.message;
+      btn.disabled = false;
+      btn.textContent = 'Upload';
+    }
+
+    async function ask() {
+      const question = document.getElementById('question').value.trim();
+      if (!question) return;
+
+      const btn = document.getElementById('ask-btn');
+      const spinner = document.getElementById('spinner');
+
+      btn.disabled = true;
+      spinner.style.display = 'block';
+
+      const res = await fetch('/ask', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question })
+      });
+
+      const data = await res.json();
+
+      spinner.style.display = 'none';
+      btn.disabled = false;
+
+      const chatBox = document.getElementById('chat-box');
+
+      if (firstAnswer) {
+        chatBox.innerHTML = '';
+        firstAnswer = false;
+      }
+
+      const entry = document.createElement('div');
+      entry.className = 'chat-entry';
+      entry.innerHTML = `
+        <div class="chat-question">Q: ${question}</div>
+        <div class="chat-answer">${data.answer}</div>
+      `;
+
+      chatBox.prepend(entry);
+      document.getElementById('question').value = '';
+    }
+  </script>
+
+</body>
+</html>
